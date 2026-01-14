@@ -449,4 +449,4 @@ const QuickLink: React.FC<{ label: string, color: string, onClick: () => void }>
   </button>
 );
 
-export default App;
+export  default App;
