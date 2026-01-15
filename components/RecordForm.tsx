@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 // import { analyzeWorkContent } from '../services/geminiService';
 import { analyzeWorkContentAPI, type Provider } from '../services/aiClient';
 import { insertRecord } from '../services/dataService';
+import { sha256Hex } from '../services/hash';
+import { setRaw } from '../services/localVault';
 import { RecordType, Priority } from '../types';
 import { Loader2, Link as LinkIcon, Wand2, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -34,7 +36,10 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId, provider }) 
         ...prev,
         description: analysis.summary,
         record_type: (analysis.suggested_type as RecordType) || prev.record_type,
-        title: prev.title || (analysis.keywords[0] ? `关于 ${analysis.keywords[0]} 的记录` : prev.title)
+        title: prev.title || (analysis.keywords[0] ? `关于 ${analysis.keywords[0]} 的记录` : prev.title),
+        suggested_type: analysis.suggested_type as any,
+        keywords: analysis.keywords as any,
+        extracted_tasks: analysis.extracted_tasks as any
       }));
       setAnalyzed(true);
     } catch (error) {
@@ -44,21 +49,41 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId, provider }) 
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
-      ...formData,
+    let contentHash: string | undefined = undefined;
+    if (formData.content && formData.content.trim().length>0) {
+      contentHash = await sha256Hex(formData.content.trim());
+      try { await setRaw(contentHash, formData.content.trim()); } catch(e) { console.debug('localVault set failed', e); }
+    } else if (formData.link_url) {
+      contentHash = await sha256Hex(formData.link_url.trim());
+    }
+    const payload: any = {
+      title: formData.title,
+      description: formData.description,
+      record_type: formData.record_type,
+      priority: formData.priority,
+      link_url: formData.link_url || null,
+      content_hash: contentHash,
       user_id: userId,
       created_at: new Date().toISOString(),
       ai_summary: formData.description,
       status: 'active',
       progress: 0
     };
+    try {
+      const extra: any = (formData as any);
+      if (extra.suggested_type) payload.suggested_type = extra.suggested_type;
+      if (extra.keywords) payload.keywords = extra.keywords;
+      if (extra.extracted_tasks) payload.extracted_tasks = extra.extracted_tasks;
+    } catch(_){}
     const saved = await insertRecord(payload);
     onSuccess(saved);
     setFormData({ title: '', description: '', link_url: '', record_type: 'promotional', priority: 'medium', content: '' });
     setAnalyzed(false);
   };
+
 
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-[2rem] p-8 shadow-2xl border border-slate-100">

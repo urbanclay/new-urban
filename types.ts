@@ -14,11 +14,16 @@ export interface User {
 }
 
 export interface WorkRecord {
+  content_hash?: string;
+  keywords?: string[];
+  extracted_tasks?: string[];
+  suggested_type?: RecordType;
   id: string;
   user_id: string;
   title: string;
   description: string;
   record_type: RecordType;
+  // content is not stored in Supabase anymore; kept locally if present
   content?: string;
   file_url?: string;
   link_url?: string;
