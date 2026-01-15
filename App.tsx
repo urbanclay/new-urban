@@ -350,6 +350,7 @@ const App: React.FC = () => {
                 <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">Verified Admin</p>
               </div>
             </div>
+            </div>
           </div>
         </header>
 
