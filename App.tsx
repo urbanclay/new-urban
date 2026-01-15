@@ -35,6 +35,7 @@ import AuthScreen from './components/AuthScreen';
 import { WorkRecord, Project, Memo, RecordType, User as UserType } from './types';
 // import { generateMonthlyReport } from './services/geminiService';
 import { generateMonthlyReportAPI, type Provider } from './services/aiClient';
+import { fetchRecords, fetchProjects, fetchMemos, insertRecord, insertProject, insertMemo, subscribeTable, deleteMemo as deleteMemoApi } from './services/dataService';
 
 const UrbanClayLogo = () => (
   <div className="flex items-center gap-3 px-2 group cursor-default">
@@ -70,7 +71,30 @@ const App: React.FC = () => {
   const [isRecordFormOpen, setIsRecordFormOpen] = useState(false);
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isMemoFormOpen, setIsMemoFormOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [provider, setProvider] = useState<Provider>('deepseek');
+  const clearLocalCacheAndSync = async () => {
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('urbanclay_')) localStorage.removeItem(k);
+      });
+      try {
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch (e) { /* noop */ }
+      if (!currentUser) return;
+      const [rs, ps, ms] = await Promise.all([
+        fetchRecords(currentUser.id),
+        fetchProjects(currentUser.id),
+        fetchMemos(currentUser.id),
+      ]);
+      setRecords(rs); setProjects(ps); setMemos(ms);
+    } catch (err) {
+      console.error('clear/sync failed', err);
+    }
+  };
   
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -78,76 +102,25 @@ const App: React.FC = () => {
   const [reportMonth, setReportMonth] = useState('2024-02');
   const [reportContent, setReportContent] = useState('');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-
-  // Load User Specific Data
+  // Load from Supabase when user changes
   useEffect(() => {
     if (!currentUser) return;
-
-    const prefix = `urbanclay_data_${currentUser.id}_`;
-    const savedRecords = localStorage.getItem(prefix + 'records');
-    const savedProjects = localStorage.getItem(prefix + 'projects');
-    const savedMemos = localStorage.getItem(prefix + 'memos');
-
-    if (savedRecords) setRecords(JSON.parse(savedRecords));
-    else {
-      // Mock initial data if empty
-      const todayStr = new Date().toISOString().split('T')[0];
-      setRecords([{
-        id: '1',
-        user_id: currentUser.id,
-        title: '2024新年营销推文',
-        description: '公众号新年大促推文，包含年度总结与优惠预告。',
-        record_type: 'promotional',
-        link_url: 'https://mp.weixin.qq.com/s/sample_link_1',
-        ai_summary: '该推文聚焦于用户年度回顾，通过情感化叙事转化大促销量，整体基调积极。',
-        status: 'active',
-        priority: 'high',
-        progress: 100,
-        created_at: todayStr + 'T10:00:00Z'
-      }]);
-    }
-
-    if (savedProjects) setProjects(JSON.parse(savedProjects));
-    else {
-      setProjects([{
-        id: 'p1',
-        user_id: currentUser.id,
-        name: '品牌焕新计划 2024',
-        description: '涵盖视觉、内容、渠道的全方位升级。',
-        project_type: 'marketing',
-        status: 'in_progress',
-        priority: 'high',
-        progress: 45,
-        start_date: new Date().toISOString().split('T')[0],
-        target_date: '2024-06-30',
-        linked_record_ids: ['1']
-      }]);
-    }
-
-    if (savedMemos) setMemos(JSON.parse(savedMemos));
-    else {
-       setMemos([{
-        id: 'm1',
-        user_id: currentUser.id,
-        title: '项目周会',
-        description: '讨论品牌焕新项目进度',
-        date: new Date().toISOString().split('T')[0],
-        time: '14:00',
-        type: 'meeting',
-        priority: 'high',
-        is_notified: true
-      }]);
-    }
+    const load = async () => {
+      const [rs, ps, ms] = await Promise.all([
+        fetchRecords(currentUser.id),
+        fetchProjects(currentUser.id),
+        fetchMemos(currentUser.id),
+      ]);
+      setRecords(rs);
+      setProjects(ps);
+      setMemos(ms);
+    };
+    load();
+    const unsub1 = subscribeTable(currentUser.id, 'work_records', load);
+    const unsub2 = subscribeTable(currentUser.id, 'projects', load);
+    const unsub3 = subscribeTable(currentUser.id, 'memos', load);
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [currentUser]);
-
-  // Sync with Storage
-  useEffect(() => {
-    if (!currentUser) return;
-    const prefix = `urbanclay_data_${currentUser.id}_`;
-    localStorage.setItem(prefix + 'records', JSON.stringify(records));
-    localStorage.setItem(prefix + 'projects', JSON.stringify(projects));
-    localStorage.setItem(prefix + 'memos', JSON.stringify(memos));
-  }, [records, projects, memos, currentUser]);
 
   const handleLogin = (user: UserType) => {
     setCurrentUser(user);
@@ -183,19 +156,34 @@ const App: React.FC = () => {
     setProjects(prev => prev.filter(p => p.id !== id));
   };
 
-  const handleAddRecord = (newRecord: WorkRecord) => {
-    setRecords([newRecord, ...records]);
-    setIsRecordFormOpen(false);
+  const removeMemo = async (id: string) => {
+    try {
+      await deleteMemoApi(id);
+    } catch(e){ console.error(e);}
   };
 
-  const handleAddProject = (newProject: Project) => {
-    setProjects([newProject, ...projects]);
-    setIsProjectFormOpen(false);
+  const handleAddRecord = async (newRecord: WorkRecord) => {
+    try {
+      await insertRecord(newRecord);
+    } finally {
+      setIsRecordFormOpen(false);
+    }
   };
 
-  const handleAddMemo = (newMemo: Memo) => {
-    setMemos([newMemo, ...memos]);
-    setIsMemoFormOpen(false);
+  const handleAddProject = async (newProject: Project) => {
+    try {
+      await insertProject(newProject);
+    } finally {
+      setIsProjectFormOpen(false);
+    }
+  };
+
+  const handleAddMemo = async (newMemo: Memo) => {
+    try {
+      await insertMemo(newMemo);
+    } finally {
+      setIsMemoFormOpen(false);
+    }
   };
 
   const handleBackToDashboard = () => {
@@ -343,6 +331,7 @@ const App: React.FC = () => {
                   <option value="gemini">Gemini</option>
                 </select>
               </div>
+              <button onClick={clearLocalCacheAndSync} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-700 hover:bg-slate-50">清除本地缓存并同步</button>
             <button className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all relative border border-transparent">
               <Bell size={20} />
               {memos.some(m => m.is_notified) && (
@@ -417,7 +406,12 @@ const App: React.FC = () => {
                               <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">{m.date} {m.time}</p>
                             </div>
                           </div>
-                          <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-600 transition-all" />
+                          <div className="flex items-center gap-2">
+                              <button onClick={(e)=>{e.stopPropagation(); removeMemo(m.id);}} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition" title="删除">
+                                <svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-trash-2'><path d='M3 6h18'/><path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'/><path d='M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/><line x1='10' x2='10' y1='11' y2='17'/><line x1='14' x2='14' y1='11' y2='17'/></svg>
+                              </button>
+                              <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-600 transition-all" />
+                            </div>
                         </div>
                       )) : (
                         <div className="py-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold">
@@ -438,12 +432,92 @@ const App: React.FC = () => {
               </div>
             )}
 
+            {selectedProject && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+                <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-[2rem] p-8 border border-slate-200 shadow-2xl">
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-900 tracking-tight">项目详情</h2>
+                      <p className="text-slate-500 text-sm mt-1">{selectedProject.name}</p>
+                    </div>
+                    <button onClick={() => setSelectedProject(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full border border-slate-200">
+                      <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4 text-sm text-slate-700">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">描述</div>
+                      <div className="whitespace-pre-wrap">{selectedProject.description || '—'}</div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">起止</div>
+                        <div>开始：{selectedProject.start_date || '—'}</div>
+                        <div>目标：{selectedProject.target_date || '—'}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">进度</div>
+                        <div>{selectedProject.progress}% · 状态：{selectedProject.status}</div>
+                      </div>
+                    </div>
+                    {Array.isArray(selectedProject.linked_record_ids) && selectedProject.linked_record_ids.length > 0 && (
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">关联记录</div>
+                        <div className="text-slate-600 text-xs">{selectedProject.linked_record_ids.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+    
+
             {activeTab === 'schedule' && (
               <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                  <h1 className="text-3xl font-black">调度中心</h1>
                  <Calendar records={activeRecords} projects={activeProjects} memos={memos} />
               </div>
             )}
+
+            {selectedProject && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+                <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-[2rem] p-8 border border-slate-200 shadow-2xl">
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-900 tracking-tight">项目详情</h2>
+                      <p className="text-slate-500 text-sm mt-1">{selectedProject.name}</p>
+                    </div>
+                    <button onClick={() => setSelectedProject(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full border border-slate-200">
+                      <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4 text-sm text-slate-700">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">描述</div>
+                      <div className="whitespace-pre-wrap">{selectedProject.description || '—'}</div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">起止</div>
+                        <div>开始：{selectedProject.start_date || '—'}</div>
+                        <div>目标：{selectedProject.target_date || '—'}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">进度</div>
+                        <div>{selectedProject.progress}% · 状态：{selectedProject.status}</div>
+                      </div>
+                    </div>
+                    {Array.isArray(selectedProject.linked_record_ids) && selectedProject.linked_record_ids.length > 0 && (
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">关联记录</div>
+                        <div className="text-slate-600 text-xs">{selectedProject.linked_record_ids.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+    
 
             {activeTab === 'records' && (
               <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -486,6 +560,46 @@ const App: React.FC = () => {
               </div>
             )}
 
+            {selectedProject && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+                <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-[2rem] p-8 border border-slate-200 shadow-2xl">
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-900 tracking-tight">项目详情</h2>
+                      <p className="text-slate-500 text-sm mt-1">{selectedProject.name}</p>
+                    </div>
+                    <button onClick={() => setSelectedProject(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full border border-slate-200">
+                      <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4 text-sm text-slate-700">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">描述</div>
+                      <div className="whitespace-pre-wrap">{selectedProject.description || '—'}</div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">起止</div>
+                        <div>开始：{selectedProject.start_date || '—'}</div>
+                        <div>目标：{selectedProject.target_date || '—'}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">进度</div>
+                        <div>{selectedProject.progress}% · 状态：{selectedProject.status}</div>
+                      </div>
+                    </div>
+                    {Array.isArray(selectedProject.linked_record_ids) && selectedProject.linked_record_ids.length > 0 && (
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">关联记录</div>
+                        <div className="text-slate-600 text-xs">{selectedProject.linked_record_ids.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+    
+
             {activeTab === 'projects' && (
                <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                   <div className="flex justify-between items-center">
@@ -496,7 +610,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {activeProjects.map(project => (
-                      <ProjectCard key={project.id} project={project} onDelete={() => deleteProject(project.id)} />
+                      <ProjectCard key={project.id} project={project} onDelete={() => deleteProject(project.id)} onOpen={(p)=> setSelectedProject(p)} />
                     ))}
                   </div>
                </div>
@@ -601,6 +715,46 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {selectedProject && (
+              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+                <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-[2rem] p-8 border border-slate-200 shadow-2xl">
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h2 className="text-2xl font-black text-slate-900 tracking-tight">项目详情</h2>
+                      <p className="text-slate-500 text-sm mt-1">{selectedProject.name}</p>
+                    </div>
+                    <button onClick={() => setSelectedProject(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full border border-slate-200">
+                      <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 6 18'/><path d='m6 6 12 12'/></svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4 text-sm text-slate-700">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">描述</div>
+                      <div className="whitespace-pre-wrap">{selectedProject.description || '—'}</div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">起止</div>
+                        <div>开始：{selectedProject.start_date || '—'}</div>
+                        <div>目标：{selectedProject.target_date || '—'}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">进度</div>
+                        <div>{selectedProject.progress}% · 状态：{selectedProject.status}</div>
+                      </div>
+                    </div>
+                    {Array.isArray(selectedProject.linked_record_ids) && selectedProject.linked_record_ids.length > 0 && (
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">关联记录</div>
+                        <div className="text-slate-600 text-xs">{selectedProject.linked_record_ids.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+    
           </div>
         </div>
       </main>

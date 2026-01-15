@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { insertProject } from '../services/dataService';
 import { Project, WorkRecord, ProjectStatus, Priority } from '../types';
 import { FolderPlus, FileUp, Link as LinkIcon, CheckCircle2, X } from 'lucide-react';
 

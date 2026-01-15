@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 // import { analyzeWorkContent } from '../services/geminiService';
 import { analyzeWorkContentAPI, type Provider } from '../services/aiClient';
+import { insertRecord } from '../services/dataService';
 import { RecordType, Priority } from '../types';
 import { Loader2, Link as LinkIcon, Wand2, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -43,18 +44,18 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId, provider }) 
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newRecord = {
+    const payload = {
       ...formData,
-      id: Math.random().toString(36).substr(2, 9),
       user_id: userId,
       created_at: new Date().toISOString(),
       ai_summary: formData.description,
       status: 'active',
       progress: 0
     };
-    onSuccess(newRecord);
+    const saved = await insertRecord(payload);
+    onSuccess(saved);
     setFormData({ title: '', description: '', link_url: '', record_type: 'promotional', priority: 'medium', content: '' });
     setAnalyzed(false);
   };

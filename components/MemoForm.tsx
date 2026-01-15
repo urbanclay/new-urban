@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { insertMemo } from '../services/dataService';
 import { Memo, Priority } from '../types';
 import { StickyNote, Calendar as CalendarIcon, Clock, Bell, Video, Save } from 'lucide-react';
 

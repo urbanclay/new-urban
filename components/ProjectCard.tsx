@@ -6,6 +6,7 @@ import { Calendar, Layers, FileIcon, AlertCircle, CheckCircle2, Clock, PlayCircl
 interface ProjectCardProps {
   project: Project;
   onDelete?: () => void;
+  onOpen?: (project: Project) => void;
 }
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project, onDelete }) => {
@@ -21,7 +22,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onDelete }) => {
   const isDeleted = project.status === 'deleted';
 
   return (
-    <div className="bg-white rounded-[2rem] border border-slate-100 p-8 hover:shadow-2xl hover:border-blue-100 transition-all duration-300 group/card relative overflow-hidden">
+    <div onClick={() => onOpen && onOpen(project)} className="cursor-pointer bg-white rounded-[2rem] border border-slate-100 p-8 hover:shadow-2xl hover:border-blue-100 transition-all duration-300 group/card relative overflow-hidden">
       <div className="flex justify-between items-start mb-6">
         <div className={`flex items-center gap-2 px-3 py-1 rounded-full border border-slate-100 text-[9px] font-black uppercase tracking-widest ${config.bg} ${config.color}`}>
           {config.icon}
