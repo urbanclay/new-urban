@@ -34,7 +34,7 @@ import MemoForm from './components/MemoForm';
 import AuthScreen from './components/AuthScreen';
 import { WorkRecord, Project, Memo, RecordType, User as UserType } from './types';
 // import { generateMonthlyReport } from './services/geminiService';
-import { generateMonthlyReportAPI } from './services/aiClient';
+import { generateMonthlyReportAPI, type Provider } from './services/aiClient';
 
 const UrbanClayLogo = () => (
   <div className="flex items-center gap-3 px-2 group cursor-default">
@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const [isRecordFormOpen, setIsRecordFormOpen] = useState(false);
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isMemoFormOpen, setIsMemoFormOpen] = useState(false);
+  const [provider, setProvider] = useState<Provider>('deepseek');
   
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -219,7 +220,7 @@ const App: React.FC = () => {
     setIsGeneratingReport(true);
     try {
       const monthRecords = activeRecords.filter(r => r.created_at.startsWith(reportMonth));
-      const report = await generateMonthlyReportAPI(monthRecords, reportMonth, 'deepseek');
+      const report = await generateMonthlyReportAPI(monthRecords, reportMonth, provider);
       setReportContent(report);
     } catch (error) {
       console.error("Report generation failed", error);
@@ -333,9 +334,15 @@ const App: React.FC = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-          </div>
-
-          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Model</label>
+                <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+              </div>
             <button className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all relative border border-transparent">
               <Bell size={20} />
               {memos.some(m => m.is_notified) && (
@@ -602,7 +609,7 @@ const App: React.FC = () => {
       {isRecordFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="w-full max-w-2xl max-h-[95vh] overflow-y-auto animate-in zoom-in-95">
-            <RecordForm onSuccess={handleAddRecord} userId={currentUser.id} />
+            <RecordForm onSuccess={handleAddRecord} userId={currentUser.id} provider={provider} />
             <button onClick={() => setIsRecordFormOpen(false)} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 bg-white rounded-full shadow-lg">
               <X size={20} />
             </button>

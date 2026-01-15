@@ -1,16 +1,17 @@
 
 import React, { useState } from 'react';
 // import { analyzeWorkContent } from '../services/geminiService';
-import { analyzeWorkContentAPI } from '../services/aiClient';
+import { analyzeWorkContentAPI, type Provider } from '../services/aiClient';
 import { RecordType, Priority } from '../types';
 import { Loader2, Link as LinkIcon, Wand2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface RecordFormProps {
   onSuccess: (newRecord: any) => void;
   userId: string;
+  provider: Provider;
 }
 
-const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
+const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId, provider }) => {
   const [loading, setLoading] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [formData, setFormData] = useState({
@@ -27,7 +28,7 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
     setLoading(true);
     setAnalyzed(false);
     try {
-      const analysis = await analyzeWorkContentAPI({ title: formData.title, content: formData.content, url: formData.link_url, provider: 'deepseek' });
+      const analysis = await analyzeWorkContentAPI({ title: formData.title, content: formData.content, url: formData.link_url, provider });
       setFormData(prev => ({
         ...prev,
         description: analysis.summary,
