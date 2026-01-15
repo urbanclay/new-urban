@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { analyzeWorkContent } from '../services/geminiService';
+// import { analyzeWorkContent } from '../services/geminiService';
+import { analyzeWorkContentAPI } from '../services/aiClient';
 import { RecordType, Priority } from '../types';
-import { Loader2, Link as LinkIcon, Wand2, CheckCircle2 } from 'lucide-react';
+import { Loader2, Link as LinkIcon, Wand2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface RecordFormProps {
   onSuccess: (newRecord: any) => void;
@@ -26,7 +27,7 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
     setLoading(true);
     setAnalyzed(false);
     try {
-      const analysis = await analyzeWorkContent(formData.title, formData.content, formData.link_url);
+      const analysis = await analyzeWorkContentAPI({ title: formData.title, content: formData.content, url: formData.link_url, provider: 'deepseek' });
       setFormData(prev => ({
         ...prev,
         description: analysis.summary,
@@ -131,7 +132,7 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
             className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-xl outline-none resize-none focus:bg-white transition-all text-sm font-medium"
             value={formData.content}
             onChange={e => setFormData({ ...formData, content: e.target.value })}
-            placeholder="在此处粘贴文本内容..."
+            placeholder="在此处粘贴文本内容，供 AI 深入分析..."
           />
         </div>
 
@@ -142,21 +143,21 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
           className={`w-full flex items-center justify-center gap-3 py-4 px-6 rounded-xl font-black transition-all shadow-lg ${
             analyzed 
               ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              : 'bg-slate-900 text-white hover:bg-black'
           } disabled:bg-slate-100 disabled:text-slate-300 disabled:shadow-none uppercase tracking-widest text-xs`}
         >
           {loading ? (
-            <><Loader2 className="animate-spin" size={18} /> 模型分析中...</>
+            <><Loader2 className="animate-spin" size={18} /> Model Processing...</>
           ) : analyzed ? (
-            <><CheckCircle2 size={18} /> 分析已完成</>
+            <><CheckCircle2 size={18} /> Content Extracted</>
           ) : (
-            <><Wand2 size={18} /> 是否选择 AI 分析汇总</>
+            <><Wand2 size={18} /> Initialize AI Extraction</>
           )}
         </button>
 
         <div className={`pt-2 transition-all duration-300 ${formData.description ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none h-0'}`}>
           <label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-             AI 摘要结果
+             AI Data Summary
           </label>
           <div className="bg-blue-50/30 border border-blue-100 rounded-xl p-5 text-blue-900 font-bold italic text-xs leading-relaxed">
             {formData.description}
@@ -169,7 +170,7 @@ const RecordForm: React.FC<RecordFormProps> = ({ onSuccess, userId }) => {
           type="submit"
           className="w-full py-4 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all uppercase tracking-[0.2em] text-xs"
         >
-          上传同步数据
+          Commit & Sync Data
         </button>
       </div>
     </form>
